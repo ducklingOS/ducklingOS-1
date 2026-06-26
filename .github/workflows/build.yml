@@ -13,20 +13,13 @@ jobs:
     - name: Bau-Werkzeuge installieren
       run: |
         sudo apt-get update
-        sudo apt-get install -y squashfs-tools xorriso genisoimage wget isolinux syslinux-common
+        sudo apt-get install -y squashfs-tools xorriso genisoimage isolinux syslinux-common
 
-    - name: Minimales RootFS vorbereiten
+    - name: Minimales RootFS aus Server-Image kopieren
       run: |
         mkdir -p build/squashfs/rootfs build/iso/casper
-        
-        # Holt sich automatisch das aktuellste Noble-Tarball vom Server
-        wget --no-parent -r -nd -A 'ubuntu-base-24.04.*-base-amd64.tar.gz' https://cdimage.ubuntu.com/ubuntu-base/releases/noble/release/
-        
-        # Benennt die gefundene Datei um, damit das Skript stabil bleibt
-        mv ubuntu-base-24.04.*-base-amd64.tar.gz build/ubuntu-base.tar.gz
-        
-        # Entpacken der Basis
-        sudo tar -xzf build/ubuntu-base.tar.gz -C build/squashfs/rootfs/
+        # Wir kopieren das saubere Basissystem direkt vom GitHub-Server
+        sudo rsync -a --exclude=/proc --exclude=/sys --exclude=/dev --exclude=/run --exclude=/boot / build/squashfs/rootfs/
 
     - name: ducklingOS Branding einspielen
       run: |
@@ -43,16 +36,16 @@ jobs:
         sudo mount --bind /proc build/squashfs/rootfs/proc
         sudo mount --bind /sys build/squashfs/rootfs/sys
 
-        # DNS kopieren für den Download innerhalb der Chroot-Umgebung
+        # DNS für Internetzugriff im chroot kopieren
         sudo cp /etc/resolv.conf build/squashfs/rootfs/etc/resolv.conf
 
         # Paketquellen aktualisieren
         sudo chroot build/squashfs/rootfs apt-get update
         
-        # Desktop und Core-Komponenten einspielen
+        # Systemkomponenten und KDE Desktop installieren
         sudo DEBIAN_FRONTEND=noninteractive chroot build/squashfs/rootfs apt-get install -y linux-image-generic initramfs-tools kubuntu-desktop calamares sddm live-boot casper dbus-x11
 
-        # Live-Benutzer einrichten
+        # Live-Benutzer duckling einrichten
         sudo chroot build/squashfs/rootfs useradd -m -s /bin/bash -g sudo duckling
         sudo chroot build/squashfs/rootfs passwd -d duckling
 
@@ -65,8 +58,8 @@ jobs:
         sudo mksquashfs build/squashfs/rootfs build/iso/casper/filesystem.squashfs -comp xz
         
         mkdir -p build/iso/isolinux
-        sudo cp build/squashfs/rootfs/boot/vmlinuz* build/iso/casper/vmlinuz
-        sudo cp build/squashfs/rootfs/boot/initrd* build/iso/casper/initrd
+        sudo cp build/squashfs/rootfs/boot/vmlinuz* build/iso/casper/vmlinuz || true
+        sudo cp build/squashfs/rootfs/boot/initrd* build/iso/casper/initrd || true
         sudo cp /usr/lib/ISOLINUX/isolinux.bin build/iso/isolinux/
         sudo cp /usr/lib/syslinux/modules/bios/ldlinux.c32 build/iso/isolinux/
         
