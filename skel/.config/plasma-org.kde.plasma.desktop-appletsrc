@@ -1,0 +1,14 @@
+[Containments]
+activityId=
+formfactor=0
+immutability=1
+lastDesktopPath=
+plugin=org.kde.plasma.folder
+wallpaperplugin=org.kde.image
+
+[Containments][General]
+ToolBoxInCorner=false
+
+[Containments][Wallpaper][org.kde.image][General]
+Image=file:///usr/share/backgrounds/duckling/default.jpg
+FillMode=2
