@@ -18,10 +18,10 @@ jobs:
     - name: Minimales RootFS vorbereiten
       run: |
         mkdir -p build/squashfs/rootfs build/iso/casper
-        # Wir laden das offizielle, stabile Ubuntu Base Tarball herunter
-        wget http://ubuntu.com
-        # Entpacken in das Zielverzeichnis
-        sudo tar -xzf ubuntu-base-24.04-base-amd64.tar.gz -C build/squashfs/rootfs/
+        # Korrigierter Direktlink zum offiziellen Ubuntu Base Archiv
+        wget http://ubuntu.com -O build/ubuntu-base.tar.gz
+        # Entpacken der heruntergeladenen Datei
+        sudo tar -xzf build/ubuntu-base.tar.gz -C build/squashfs/rootfs/
 
     - name: ducklingOS Branding einspielen
       run: |
@@ -38,13 +38,13 @@ jobs:
         sudo mount --bind /proc build/squashfs/rootfs/proc
         sudo mount --bind /sys build/squashfs/rootfs/sys
 
-        # DNS-Server kopieren, damit das virtuelle System Internetzugriff hat
-        sudo cp /etc/resolvconf/resolv.conf.d/base build/squashfs/rootfs/etc/resolv.conf || sudo cp /etc/resolv.conf build/squashfs/rootfs/etc/resolv.conf
+        # DNS für Internetzugriff im chroot kopieren
+        sudo cp /etc/resolv.conf build/squashfs/rootfs/etc/resolv.conf
 
-        # Paketquellen aktualisieren und System vorbereiten
+        # Paketquellen aktualisieren
         sudo chroot build/squashfs/rootfs apt-get update
         
-        # Desktop, Kernel und Live-Boot-Komponenten installieren
+        # Systemkomponenten und KDE Desktop installieren
         sudo DEBIAN_FRONTEND=noninteractive chroot build/squashfs/rootfs apt-get install -y linux-image-generic initramfs-tools kubuntu-desktop calamares sddm live-boot casper dbus-x11
 
         # Live-Benutzer duckling einrichten
@@ -57,10 +57,8 @@ jobs:
 
     - name: Neue ducklingOS ISO verpacken
       run: |
-        # Komprimiert das Dateisystem
         sudo mksquashfs build/squashfs/rootfs build/iso/casper/filesystem.squashfs -comp xz
         
-        # Kopiert die Boot-Dateien (Kernel) an die richtige Stelle für die ISO
         mkdir -p build/iso/isolinux
         sudo cp build/squashfs/rootfs/boot/vmlinuz* build/iso/casper/vmlinuz
         sudo cp build/squashfs/rootfs/boot/initrd* build/iso/casper/initrd
@@ -69,7 +67,6 @@ jobs:
         
         echo -e "default duckling\nlabel duckling\n  kernel /casper/vmlinuz\n  append initrd=/casper/initrd boot=casper quiet splash ---" > build/iso/isolinux/isolinux.cfg
 
-        # Generiert die bootbare ISO
         xorriso -as mkisofs -r -V "ducklingOS 1" \
           -o ducklingOS_1_x64.iso \
           -J -joliet-long -b isolinux/isolinux.bin \
