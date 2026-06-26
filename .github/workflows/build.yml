@@ -18,46 +18,45 @@ jobs:
     - name: Ubuntu Basis-Image herunterladen
       run: |
         mkdir -p build/iso build/squashfs
-        # Lädt die offizielle Ubuntu-Basis herunter
+        # Wir nutzen das offizielle Ubuntu-Live-System als solide, bootbare Basis
         wget -O build/ubuntu.iso http://ubuntu.com
 
     - name: ISO entpacken
       run: |
-        # Entpackt die ISO, damit wir sie verändern können
         xorriso -osirrox on -indev build/ubuntu.iso -extract / build/iso
         chmod -R +w build/iso
-        # Das originale Dateisystem (SquashFS) entpacken
         sudo unsquashfs -d build/squashfs/rootfs build/iso/casper/filesystem.squashfs
 
-    - name: ducklingOS Branding & Anpassungen einspielen
+    - name: ducklingOS Branding einspielen
       run: |
-        # 1. Namen in den Systemeinstellungen ändern
+        # System-Identifikation anpassen
         sudo cp lsb-release build/squashfs/rootfs/etc/lsb-release
         sudo cp os-release build/squashfs/rootfs/etc/os-release
 
-        # 2. Wallpaper an die richtige Stelle kopieren
+        # Wallpaper kopieren
         sudo mkdir -p build/squashfs/rootfs/usr/share/backgrounds/duckling/
         sudo cp duckling_wallpaper.jpg build/squashfs/rootfs/usr/share/backgrounds/duckling/default.jpg
 
-        # 3. KDE-Standard-Design für neue Benutzer hinterlegen
+        # KDE-Standard-Design für neue Benutzer hinterlegen
         sudo mkdir -p build/squashfs/rootfs/etc/skel/.config/
         if [ -d "skel/.config" ]; then sudo cp -r skel/.config/* build/squashfs/rootfs/etc/skel/.config/; fi
 
-        # 4. Calamares Setup-Wizard Konfiguration kopieren
-        sudo mkdir -p build/squashfs/rootfs/etc/calamares/modules/
-        sudo mkdir -p build/squashfs/rootfs/etc/calamares/branding/duckling/
-        if [ -d "calamares" ]; then sudo cp -r calamares/* build/squashfs/rootfs/etc/calamares/; fi
-
-    - name: KDE Plasma & Calamares im System installieren
+    - name: Live-System konfigurieren & KDE Plasma installieren
       run: |
-        # Chroot simuliert, dass wir uns direkt im neuen Betriebssystem befinden
         sudo mount --bind /dev build/squashfs/rootfs/dev
         sudo mount --bind /proc build/squashfs/rootfs/proc
         sudo mount --bind /sys build/squashfs/rootfs/sys
 
-        # Software-Pakete in ducklingOS installieren (KDE Plasma & Setup-Assistent)
+        # WICHTIG: Paketquellen für Universum-Software öffnen
+        sudo chroot build/squashfs/rootfs sed -i 's/# sep/sep/g' /etc/apt/sources.list
+        
+        # System aktualisieren und Desktop installieren
         sudo chroot build/squashfs/rootfs apt update
-        sudo chroot build/squashfs/rootfs apt install -y kubuntu-desktop calamares sddm
+        sudo DEBIAN_FRONTEND=noninteractive chroot build/squashfs/rootfs apt install -y kubuntu-desktop calamares sddm live-boot casper
+
+        # Live-Benutzer "duckling" erstellen und konfigurieren
+        sudo chroot build/squashfs/rootfs useradd -m -s /bin/bash -g sudo duckling
+        sudo chroot build/squashfs/rootfs passwd -d duckling
 
         # Aufräumen nach der Installation
         sudo umount build/squashfs/rootfs/dev
@@ -66,11 +65,10 @@ jobs:
 
     - name: Neue ducklingOS ISO verpacken
       run: |
-        # Das modifizierte Dateisystem wieder komprimieren
         sudo rm build/iso/casper/filesystem.squashfs
         sudo mksquashfs build/squashfs/rootfs build/iso/casper/filesystem.squashfs -comp xz
 
-        # Die finale, bootbare ISO-Datei für x64 PCs generieren
+        # Bootbare x64 PC ISO generieren
         xorriso -as mkisofs -r -V "ducklingOS 1" \
           -o ducklingOS_1_x64.iso \
           -J -joliet-long -b isolinux/isolinux.bin \
