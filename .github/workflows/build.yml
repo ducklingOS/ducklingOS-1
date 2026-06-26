@@ -10,24 +10,18 @@ jobs:
     - name: Code aus GitHub auschecken
       uses: actions/checkout@v4
 
-    - name: Server-Speicherplatz freigeben (Große Tools loeschen)
-      run: |
-        sudo rm -rf /usr/share/dotnet
-        sudo rm -rf /usr/local/lib/android
-        sudo rm -rf /opt/ghc
-        sudo rm -rf /opt/hostedtoolcache/CodeQL
-        sudo docker image prune --all --force
-
     - name: Bau-Werkzeuge installieren
       run: |
         sudo apt-get update
-        sudo apt-get install -y squashfs-tools xorriso genisoimage isolinux syslinux-common rsync
+        sudo apt-get install -y squashfs-tools xorriso genisoimage isolinux syslinux-common
 
-    - name: Minimales RootFS aus Server-Image kopieren
+    - name: Minimales RootFS blitzschnell via Docker erstellen
       run: |
-        mkdir -p build/squashfs/rootfs build/iso/casper
-        # Kopiert das Basissystem vom freigeräumten Server
-        sudo rsync -a --exclude=/proc --exclude=/sys --exclude=/dev --exclude=/run --exclude=/boot --exclude=/home/runner/work build/squashfs/rootfs/ / build/squashfs/rootfs/
+        mkdir -p build/squashfs build/iso/casper
+        # Holt das offizielle x64-Ubuntu-System aus Docker und entpackt es direkt
+        sudo docker run --name duckling_base ubuntu:24.04 /bin/true
+        sudo docker export duckling_base | sudo tar -C build/squashfs/rootfs -xf -
+        sudo docker rm duckling_base
 
     - name: ducklingOS Branding einspielen
       run: |
