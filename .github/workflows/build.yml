@@ -17,7 +17,8 @@ jobs:
 
     - name: Minimales RootFS blitzschnell via Docker erstellen
       run: |
-        mkdir -p build/squashfs build/iso/casper
+        # Jetzt wird die komplette Ordnerstruktur inklusive rootfs erstellt
+        mkdir -p build/squashfs/rootfs build/iso/casper
         # Holt das offizielle x64-Ubuntu-System aus Docker und entpackt es direkt
         sudo docker run --name duckling_base ubuntu:24.04 /bin/true
         sudo docker export duckling_base | sudo tar -C build/squashfs/rootfs -xf -
