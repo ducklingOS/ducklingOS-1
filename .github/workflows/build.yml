@@ -12,32 +12,21 @@ jobs:
 
     - name: Bau-Werkzeuge installieren
       run: |
-        sudo apt update
-        sudo apt install -y squashfs-tools xorriso genisoimage wget isolinux syslinux-common
+        sudo apt-get update
+        sudo apt-get install -y squashfs-tools xorriso genisoimage wget isolinux syslinux-common debootstrap
 
-    - name: Ubuntu Basis-Image herunterladen
+    - name: Minimales RootFS erstellen
       run: |
-        mkdir -p build/iso build/squashfs
-        # Wir nutzen das offizielle Ubuntu-Live-System als solide, bootbare Basis
-        wget -O build/ubuntu.iso http://ubuntu.com
-
-    - name: ISO entpacken
-      run: |
-        xorriso -osirrox on -indev build/ubuntu.iso -extract / build/iso
-        chmod -R +w build/iso
-        sudo unsquashfs -d build/squashfs/rootfs build/iso/casper/filesystem.squashfs
+        mkdir -p build/squashfs/rootfs build/iso/casper
+        # Erstellt ein sauberes, frisches x64-Ubuntu-Grundsystem per debootstrap
+        sudo debootstrap --arch=amd64 noble build/squashfs/rootfs http://ubuntu.com
 
     - name: ducklingOS Branding einspielen
       run: |
-        # System-Identifikation anpassen
         sudo cp lsb-release build/squashfs/rootfs/etc/lsb-release
         sudo cp os-release build/squashfs/rootfs/etc/os-release
-
-        # Wallpaper kopieren
         sudo mkdir -p build/squashfs/rootfs/usr/share/backgrounds/duckling/
         sudo cp duckling_wallpaper.jpg build/squashfs/rootfs/usr/share/backgrounds/duckling/default.jpg
-
-        # KDE-Standard-Design für neue Benutzer hinterlegen
         sudo mkdir -p build/squashfs/rootfs/etc/skel/.config/
         if [ -d "skel/.config" ]; then sudo cp -r skel/.config/* build/squashfs/rootfs/etc/skel/.config/; fi
 
@@ -47,28 +36,33 @@ jobs:
         sudo mount --bind /proc build/squashfs/rootfs/proc
         sudo mount --bind /sys build/squashfs/rootfs/sys
 
-        # WICHTIG: Paketquellen für Universum-Software öffnen
-        sudo chroot build/squashfs/rootfs sed -i 's/# sep/sep/g' /etc/apt/sources.list
-        
-        # System aktualisieren und Desktop installieren
-        sudo chroot build/squashfs/rootfs apt update
-        sudo DEBIAN_FRONTEND=noninteractive chroot build/squashfs/rootfs apt install -y kubuntu-desktop calamares sddm live-boot casper
+        # Systemaktualisierung und Kernels/KDE/Live-Boot installieren
+        sudo chroot build/squashfs/rootfs apt-get update
+        sudo DEBIAN_FRONTEND=noninteractive chroot build/squashfs/rootfs apt-get install -y linux-image-generic initramfs-tools kubuntu-desktop calamares sddm live-boot casper dbus-x11
 
-        # Live-Benutzer "duckling" erstellen und konfigurieren
+        # Live-Benutzer duckling einrichten
         sudo chroot build/squashfs/rootfs useradd -m -s /bin/bash -g sudo duckling
         sudo chroot build/squashfs/rootfs passwd -d duckling
 
-        # Aufräumen nach der Installation
         sudo umount build/squashfs/rootfs/dev
         sudo umount build/squashfs/rootfs/proc
         sudo umount build/squashfs/rootfs/sys
 
     - name: Neue ducklingOS ISO verpacken
       run: |
-        sudo rm build/iso/casper/filesystem.squashfs
+        # Komprimiert das funktionierende System
         sudo mksquashfs build/squashfs/rootfs build/iso/casper/filesystem.squashfs -comp xz
+        
+        # Erstellt minimale Boot-Dateien für die ISO
+        mkdir -p build/iso/isolinux
+        cp build/squashfs/rootfs/boot/vmlinuz* build/iso/casper/vmlinuz
+        cp build/squashfs/rootfs/boot/initrd* build/iso/casper/initrd
+        cp /usr/lib/ISOLINUX/isolinux.bin build/iso/isolinux/
+        cp /usr/lib/syslinux/modules/bios/ldlinux.c32 build/iso/isolinux/
+        
+        echo -e "default duckling\nlabel duckling\n  kernel /casper/vmlinuz\n  append initrd=/casper/initrd boot=casper quiet splash ---" > build/iso/isolinux/isolinux.cfg
 
-        # Bootbare x64 PC ISO generieren
+        # Generiert die finale, bootbare ISO
         xorriso -as mkisofs -r -V "ducklingOS 1" \
           -o ducklingOS_1_x64.iso \
           -J -joliet-long -b isolinux/isolinux.bin \
