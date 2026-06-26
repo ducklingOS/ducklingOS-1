@@ -10,16 +10,24 @@ jobs:
     - name: Code aus GitHub auschecken
       uses: actions/checkout@v4
 
+    - name: Server-Speicherplatz freigeben (Große Tools loeschen)
+      run: |
+        sudo rm -rf /usr/share/dotnet
+        sudo rm -rf /usr/local/lib/android
+        sudo rm -rf /opt/ghc
+        sudo rm -rf /opt/hostedtoolcache/CodeQL
+        sudo docker image prune --all --force
+
     - name: Bau-Werkzeuge installieren
       run: |
         sudo apt-get update
-        sudo apt-get install -y squashfs-tools xorriso genisoimage isolinux syslinux-common
+        sudo apt-get install -y squashfs-tools xorriso genisoimage isolinux syslinux-common rsync
 
     - name: Minimales RootFS aus Server-Image kopieren
       run: |
         mkdir -p build/squashfs/rootfs build/iso/casper
-        # Wir kopieren das saubere Basissystem direkt vom GitHub-Server
-        sudo rsync -a --exclude=/proc --exclude=/sys --exclude=/dev --exclude=/run --exclude=/boot / build/squashfs/rootfs/
+        # Kopiert das Basissystem vom freigeräumten Server
+        sudo rsync -a --exclude=/proc --exclude=/sys --exclude=/dev --exclude=/run --exclude=/boot --exclude=/home/runner/work build/squashfs/rootfs/ / build/squashfs/rootfs/
 
     - name: ducklingOS Branding einspielen
       run: |
@@ -36,16 +44,11 @@ jobs:
         sudo mount --bind /proc build/squashfs/rootfs/proc
         sudo mount --bind /sys build/squashfs/rootfs/sys
 
-        # DNS für Internetzugriff im chroot kopieren
         sudo cp /etc/resolv.conf build/squashfs/rootfs/etc/resolv.conf
-
-        # Paketquellen aktualisieren
         sudo chroot build/squashfs/rootfs apt-get update
         
-        # Systemkomponenten und KDE Desktop installieren
         sudo DEBIAN_FRONTEND=noninteractive chroot build/squashfs/rootfs apt-get install -y linux-image-generic initramfs-tools kubuntu-desktop calamares sddm live-boot casper dbus-x11
 
-        # Live-Benutzer duckling einrichten
         sudo chroot build/squashfs/rootfs useradd -m -s /bin/bash -g sudo duckling
         sudo chroot build/squashfs/rootfs passwd -d duckling
 
