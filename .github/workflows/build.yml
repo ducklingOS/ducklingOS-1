@@ -15,14 +15,11 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y squashfs-tools xorriso genisoimage isolinux syslinux-common
 
-    # Erstellt die Ordnerstruktur vorab, damit der APT-Cache dorthin gemountet werden kann
-     Pentpackt es direkt
     - name: Basis-Ordnerstruktur vorbereiten
       run: |
         mkdir -p build/squashfs/rootfs/var/cache/apt/archives
         mkdir -p build/iso/casper
 
-    # Cacht die heruntergeladenen .deb-Pakete (spart massig Zeit bei zukünftigen Runs)
     - name: APT-Paket-Cache einrichten
       uses: actions/cache@v4
       with:
