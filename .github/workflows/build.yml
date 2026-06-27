@@ -13,26 +13,12 @@ jobs:
     - name: Bau-Werkzeuge installieren
       run: |
         sudo apt-get update
-        sudo apt-get install -y squashfs-tools xorriso genisoimage isolinux syslinux-common
+        sudo apt-get install -y squashfs-tools xorriso genisoimage isolinux syslinux-common mtools mdtm
 
-    - name: Basis-Ordnerstruktur vorbereiten
+    - name: Minimales RootFS via Docker erstellen
       run: |
-        mkdir -p build/squashfs/rootfs/var/cache/apt/archives
-        mkdir -p build/iso/casper
-
-    - name: APT-Paket-Cache einrichten
-      uses: actions/cache@v4
-      with:
-        path: build/squashfs/rootfs/var/cache/apt/archives
-        key: ${{ runner.os }}-apt-kubuntu-${{ hashFiles('**/lsb-release') }}
-        restore-keys: |
-          ${{ runner.os }}-apt-kubuntu-
-
-    - name: Minimales RootFS blitzschnell via Docker erstellen
-      run: |
-        # Holt das offizielle x64-Ubuntu-System aus Docker und entpackt es direkt
+        mkdir -p build/squashfs/rootfs build/iso/casper
         sudo docker run --name duckling_base ubuntu:24.04 /bin/true
-        # tar überschreibt die vorhandenen Cache-Ordner nicht, sondern füllt das RootFS auf
         sudo docker export duckling_base | sudo tar -C build/squashfs/rootfs -xf -
         sudo docker rm duckling_base
 
@@ -52,16 +38,10 @@ jobs:
         sudo mount --bind /sys build/squashfs/rootfs/sys
 
         sudo cp /etc/resolv.conf build/squashfs/rootfs/etc/resolv.conf
-        
-        # Docker-Images löschen standardmäßig geladene Pakete sofort. Das deaktivieren wir für unseren Cache:
-        if [ -f "build/squashfs/rootfs/etc/apt/apt.conf.d/docker-clean" ]; then
-          sudo rm build/squashfs/rootfs/etc/apt/apt.conf.d/docker-clean
-        fi
-
         sudo chroot build/squashfs/rootfs apt-get update
         
-        # Installiert Kubuntu Desktop (nutzt gecachte Pakete, falls vorhanden)
-        sudo DEBIAN_FRONTEND=noninteractive chroot build/squashfs/rootfs apt-get install -y linux-image-generic initramfs-tools kubuntu-desktop calamares sddm live-boot casper dbus-x11
+        sudo DEBIAN_FRONTEND=noninteractive chroot build/squashfs/rootfs apt-get install -y --no-install-recommends linux-image-generic initramfs-tools live-boot casper grub-efi-amd64-bin grub-pc-bin
+        sudo DEBIAN_FRONTEND=noninteractive chroot build/squashfs/rootfs apt-get install -y kubuntu-desktop calamares sddm dbus-x11
 
         sudo chroot build/squashfs/rootfs useradd -m -s /bin/bash -g sudo duckling
         sudo chroot build/squashfs/rootfs passwd -d duckling
@@ -70,28 +50,49 @@ jobs:
         sudo umount build/squashfs/rootfs/proc
         sudo umount build/squashfs/rootfs/sys
 
-    - name: Neue ducklingOS ISO verpacken
+    - name: Neue ducklingOS ISO verpacken (BIOS + UEFI Hybrid)
       run: |
-        # Nutzt rasend schnelles zstd statt dem CPU-lastigen xz auf 2 Prozessorkernen
-        sudo mksquashfs build/squashfs/rootfs build/iso/casper/filesystem.squashfs -comp zstd -processors 2
+        # SquashFS Dateisystem komprimieren
+        sudo mksquashfs build/squashfs/rootfs build/iso/casper/filesystem.squashfs -comp xz
         
+        # Kernel und Initrd kopieren
+        sudo cp $(ls -v build/squashfs/rootfs/boot/vmlinuz-* | tail -n 1) build/iso/casper/vmlinuz
+        sudo cp $(ls -v build/squashfs/rootfs/boot/initrd.img-* | tail -n 1) build/iso/casper/initrd
+        
+        # 1. BIOS Bootloader (ISOLINUX) einrichten
         mkdir -p build/iso/isolinux
-        sudo cp build/squashfs/rootfs/boot/vmlinuz* build/iso/casper/vmlinuz || true
-        sudo cp build/squashfs/rootfs/boot/initrd* build/iso/casper/initrd || true
-        sudo cp /usr/lib/ISOLINUX/isolinux.bin build/iso/isolinux/
-        sudo cp /usr/lib/syslinux/modules/bios/ldlinux.c32 build/iso/isolinux/
-        
+        cp /usr/lib/ISOLINUX/isolinux.bin build/iso/isolinux/
+        cp /usr/lib/syslinux/modules/bios/ldlinux.c32 build/iso/isolinux/
         echo -e "default duckling\nlabel duckling\n  kernel /casper/vmlinuz\n  append initrd=/casper/initrd boot=casper quiet splash ---" > build/iso/isolinux/isolinux.cfg
 
+        # 2. UEFI Bootloader (GRUB2) einrichten
+        mkdir -p build/iso/boot/grub
+        echo -e "set default=0\nset timeout=5\nmenuentry 'ducklingOS 1 Starten' {\n  linux /casper/vmlinuz boot=casper quiet splash ---\n  initrd /casper/initrd\n}" > build/iso/boot/grub/grub.cfg
+        
+        # EFI-Image generieren
+        mkdir -p build/iso/EFI/BOOT
+        sudo chroot build/squashfs/rootfs grub-mkimage -o /bootx64.efi -p /boot/grub -O x86_64-efi normal iso9660 biosdisk memdisk search tar core
+        sudo mv build/squashfs/rootfs/bootx64.efi build/iso/EFI/BOOT/BOOTX64.EFI
+        
+        # Ein FAT12-Image für das EFI-Boot-Laufwerk erstellen
+        dd if=/dev/zero of=build/iso/boot/grub/efi.img bs=1k count=1440
+        mformat -i build/iso/boot/grub/efi.img -f 1440 ::
+        mmd -i build/iso/boot/grub/efi.img ::/EFI
+        mmd -i build/iso/boot/grub/efi.img ::/EFI/BOOT
+        mcopy -i build/iso/boot/grub/efi.img build/iso/EFI/BOOT/BOOTX64.EFI ::/EFI/BOOT
+
+        # 3. Finale, hybride ISO generieren
         xorriso -as mkisofs -r -V "ducklingOS 1" \
           -o ducklingOS_1_x64.iso \
-          -J -joliet-long -b isolinux/isolinux.bin \
-          -c isolinux/boot.cat -no-emul-boot \
-          -boot-load-size 4 -boot-info-table build/iso
+          -J -joliet-long \
+          -b isolinux/isolinux.bin -c isolinux/boot.cat \
+          -no-emul-boot -boot-load-size 4 -boot-info-table \
+          -eltorito-alt-boot \
+          -e boot/grub/efi.img -no-emul-boot \
+          -isohybrid-gpt-basdat build/iso
 
     - name: ISO als Download bereitstellen
       uses: actions/upload-artifact@v4
       with:
         name: ducklingOS-1-ISO
         path: ducklingOS_1_x64.iso
-        compression-level: 0 # Verhindert, dass GitHub die ohnehin komprimierte ISO nochmals zeitintensiv zippt
