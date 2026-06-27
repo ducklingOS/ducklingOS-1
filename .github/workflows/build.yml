@@ -15,12 +15,27 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y squashfs-tools xorriso genisoimage isolinux syslinux-common
 
+    # Erstellt die Ordnerstruktur vorab, damit der APT-Cache dorthin gemountet werden kann
+     Pentpackt es direkt
+    - name: Basis-Ordnerstruktur vorbereiten
+      run: |
+        mkdir -p build/squashfs/rootfs/var/cache/apt/archives
+        mkdir -p build/iso/casper
+
+    # Cacht die heruntergeladenen .deb-Pakete (spart massig Zeit bei zukünftigen Runs)
+    - name: APT-Paket-Cache einrichten
+      uses: actions/cache@v4
+      with:
+        path: build/squashfs/rootfs/var/cache/apt/archives
+        key: ${{ runner.os }}-apt-kubuntu-${{ hashFiles('**/lsb-release') }}
+        restore-keys: |
+          ${{ runner.os }}-apt-kubuntu-
+
     - name: Minimales RootFS blitzschnell via Docker erstellen
       run: |
-        # Jetzt wird die komplette Ordnerstruktur inklusive rootfs erstellt
-        mkdir -p build/squashfs/rootfs build/iso/casper
         # Holt das offizielle x64-Ubuntu-System aus Docker und entpackt es direkt
         sudo docker run --name duckling_base ubuntu:24.04 /bin/true
+        # tar überschreibt die vorhandenen Cache-Ordner nicht, sondern füllt das RootFS auf
         sudo docker export duckling_base | sudo tar -C build/squashfs/rootfs -xf -
         sudo docker rm duckling_base
 
@@ -40,8 +55,15 @@ jobs:
         sudo mount --bind /sys build/squashfs/rootfs/sys
 
         sudo cp /etc/resolv.conf build/squashfs/rootfs/etc/resolv.conf
+        
+        # Docker-Images löschen standardmäßig geladene Pakete sofort. Das deaktivieren wir für unseren Cache:
+        if [ -f "build/squashfs/rootfs/etc/apt/apt.conf.d/docker-clean" ]; then
+          sudo rm build/squashfs/rootfs/etc/apt/apt.conf.d/docker-clean
+        fi
+
         sudo chroot build/squashfs/rootfs apt-get update
         
+        # Installiert Kubuntu Desktop (nutzt gecachte Pakete, falls vorhanden)
         sudo DEBIAN_FRONTEND=noninteractive chroot build/squashfs/rootfs apt-get install -y linux-image-generic initramfs-tools kubuntu-desktop calamares sddm live-boot casper dbus-x11
 
         sudo chroot build/squashfs/rootfs useradd -m -s /bin/bash -g sudo duckling
@@ -53,7 +75,8 @@ jobs:
 
     - name: Neue ducklingOS ISO verpacken
       run: |
-        sudo mksquashfs build/squashfs/rootfs build/iso/casper/filesystem.squashfs -comp xz
+        # Nutzt rasend schnelles zstd statt dem CPU-lastigen xz auf 2 Prozessorkernen
+        sudo mksquashfs build/squashfs/rootfs build/iso/casper/filesystem.squashfs -comp zstd -processors 2
         
         mkdir -p build/iso/isolinux
         sudo cp build/squashfs/rootfs/boot/vmlinuz* build/iso/casper/vmlinuz || true
@@ -74,3 +97,4 @@ jobs:
       with:
         name: ducklingOS-1-ISO
         path: ducklingOS_1_x64.iso
+        compression-level: 0 # Verhindert, dass GitHub die ohnehin komprimierte ISO nochmals zeitintensiv zippt
