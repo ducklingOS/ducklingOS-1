@@ -40,7 +40,6 @@ jobs:
         sudo cp /etc/resolv.conf build/squashfs/rootfs/etc/resolv.conf
         sudo chroot build/squashfs/rootfs apt-get update
         
-        # Braucht KEINE Grub-Pakete mehr! Nur Kernel und Live-Infrastruktur
         sudo DEBIAN_FRONTEND=noninteractive chroot build/squashfs/rootfs apt-get install -y --no-install-recommends linux-image-generic initramfs-tools live-boot casper
         sudo DEBIAN_FRONTEND=noninteractive chroot build/squashfs/rootfs apt-get install -y kubuntu-desktop calamares sddm dbus-x11
 
@@ -81,8 +80,11 @@ jobs:
         # Limine-Konfigurationsdatei schreiben
         echo -e "timeout: 5\n\n:ducklingOS 1 Starten\n    protocol: linux\n    kernel_path: boot:///(loop)/casper/vmlinuz\n    initrd_path: boot:///(loop)/casper/initrd\n    cmdline: boot=casper quiet splash ---" > build/iso/boot/limine/limine.conf
 
-        # Finale, hybride UEFI+BIOS ISO mit Xorriso generieren (Limine Spezifikation)
-        xorriso -as mkisofs -r -V "ducklingOS 1" \
+        # WICHTIG: Rechte reparieren, damit xorriso die Dateien lesen darf!
+        sudo chmod -R 755 build/iso
+
+        # Finale ISO ohne Leerzeichen im Namen generieren (Verhindert Fehlermeldungen)
+        sudo xorriso -as mkisofs -r -V "ducklingOS" \
           -o ducklingOS_1_x64.iso \
           -J -joliet-long \
           -b boot/limine/limine-bios-cd.bin \
