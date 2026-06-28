@@ -60,7 +60,7 @@ jobs:
         sudo cp $(ls -v build/squashfs/rootfs/boot/initrd.img-* | tail -n 1) build/iso/casper/initrd
         
         # Komplettes Limine-Repository klonen und das Deploy-Tool bauen
-        git clone https://github.com --branch=v7.x-binary --depth=1
+        git clone https://github.com/limine-bootloader/limine --branch=v7.x-binary --depth=1
         make -C limine limine-deploy
         
         # Boot-Ordner in der ISO vorbereiten
