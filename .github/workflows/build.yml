@@ -1,7 +1,6 @@
 name: Build ducklingOS 1 x64 (Limine Bootloader)
 on: 
-  push:
-    branches: [ main ]
+  workflow_dispatch:
 
 jobs:
   build-os:
