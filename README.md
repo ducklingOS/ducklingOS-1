@@ -1,2 +1,2 @@
 # ducklingOS-1
-ducklingOS - besser als Windows
+ducklingOS - better than Windows
