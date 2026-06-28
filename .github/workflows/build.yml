@@ -60,7 +60,7 @@ jobs:
         sudo cp $(ls -v build/squashfs/rootfs/boot/initrd.img-* | tail -n 1) build/iso/casper/initrd
         
         # Wir klonen das offizielle Repository und bauen das Tool direkt aus dem Quellcode!
-        git clone https://github.com --branch=v7.x-binary --depth=1
+        git clone https://github.com/limine-bootloader/limine.git --branch=v7.x-binary --depth=1
         
         # Kompiliert das offizielle All-in-One-Werkzeug live auf dem Server (dauert < 5 Sekunden)
         make -C limine
@@ -89,7 +89,7 @@ jobs:
           -o ducklingOS_1_x64.iso build/iso
 
         # 2. UEFI/USB Hybrid-Code mithilfe des frisch gebauten Tools injizieren
-        sudo ./limine/limine bios-install ducklingOS_1_x64.iso
+        sudo ./limine/limine-install ducklingOS_1_x64.iso
 
     - name: ISO als Download bereitstellen
       uses: actions/upload-artifact@v4
