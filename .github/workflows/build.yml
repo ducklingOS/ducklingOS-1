@@ -58,19 +58,21 @@ jobs:
         sudo cp $(ls -v build/squashfs/rootfs/boot/vmlinuz-* | tail -n 1) build/iso/casper/vmlinuz
         sudo cp $(ls -v build/squashfs/rootfs/boot/initrd.img-* | tail -n 1) build/iso/casper/initrd
         
-        # Sicherer Download der modernen Limine-Komponenten
+        # Sichere Zusammensetzung der Download-URLs
         mkdir -p limine_boot
         PART1="https://github.com"
         PART2="/limine-bootloader/limine/raw/v7.x-binary"
         FULL_URL="${PART1}${PART2}"
         
-        # limine.sys wurde entfernt – wir laden nur noch die aktiven, modernen UEFI/BIOS-Dateien!
+        # Alle modernen Kernkomponenten laden
         wget "${FULL_URL}/limine-bios-cd.bin" -O limine_boot/limine-bios-cd.bin
         wget "${FULL_URL}/limine-uefi-cd.bin" -O limine_boot/limine-uefi-cd.bin
         wget "${FULL_URL}/BOOTX64.EFI" -O limine_boot/BOOTX64.EFI
         wget "${FULL_URL}/BOOTIA32.EFI" -O limine_boot/BOOTIA32.EFI
-        wget "${FULL_URL}/limine-deploy" -O limine_boot/limine-deploy
-        chmod +x limine_boot/limine-deploy
+        
+        # Das aktuelle All-in-One-Werkzeug laden (Ersetzt das alte limine-deploy)
+        wget "${FULL_URL}/limine" -O limine_boot/limine
+        chmod +x limine_boot/limine
 
         # Dateien in die ISO-Struktur einpflegen
         mkdir -p build/iso/boot/limine
@@ -95,8 +97,8 @@ jobs:
           -R -J -volid "DUCKLINGOS" \
           -o ducklingOS_1_x64.iso build/iso
 
-        # 2. UEFI/USB Hybrid-Code injizieren
-        sudo ./limine_boot/limine-deploy ducklingOS_1_x64.iso
+        # 2. UEFI/USB Hybrid-Code mithilfe des neuen Tools injizieren
+        sudo ./limine_boot/limine bios-install ducklingOS_1_x64.iso
 
     - name: ISO als Download bereitstellen
       uses: actions/upload-artifact@v4
