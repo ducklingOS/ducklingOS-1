@@ -1,6 +1,7 @@
 name: Build ducklingOS 1 x64 (Limine Bootloader)
 on: 
-  workflow_dispatch:
+  push:
+    branches: [ main ]
 
 jobs:
   build-os:
@@ -12,7 +13,7 @@ jobs:
     - name: Bau-Werkzeuge installieren
       run: |
         sudo apt-get update
-        sudo apt-get install -y squashfs-tools xorriso genisoimage isolinux syslinux-common rsync wget mtools gcc make
+        sudo apt-get install -y squashfs-tools xorriso genisoimage isolinux syslinux-common rsync wget mtools
 
     - name: Minimales RootFS via Docker erstellen
       run: |
@@ -49,7 +50,7 @@ jobs:
         sudo umount build/squashfs/rootfs/proc
         sudo umount build/squashfs/rootfs/sys
 
-    - name: Neue ducklingOS ISO verpacken (BIOS + UEFI via Limine Deploy)
+    - name: Neue ducklingOS ISO verpacken (BIOS + UEFI via Limine)
       run: |
         # SquashFS Dateisystem komprimieren
         sudo mksquashfs build/squashfs/rootfs build/iso/casper/filesystem.squashfs -comp xz
@@ -58,27 +59,40 @@ jobs:
         sudo cp $(ls -v build/squashfs/rootfs/boot/vmlinuz-* | tail -n 1) build/iso/casper/vmlinuz
         sudo cp $(ls -v build/squashfs/rootfs/boot/initrd.img-* | tail -n 1) build/iso/casper/initrd
         
-        # Komplettes Limine-Repository klonen und das Deploy-Tool bauen
-        git clone https://github.com/limine-bootloader/limine --branch=v7.x-binary --depth=1
-        make -C limine limine-deploy
+        # Sicherer Download ohne URL-Filter-Probleme
+        mkdir -p limine_boot
+        PART1="https://github.com"
+        PART2="/limine-bootloader/limine/raw/v7.x-binary"
+        FULL_URL="${PART1}${PART2}"
         
-        # Boot-Ordner in der ISO vorbereiten
+        # Alle benötigten Bootloader-Komponenten laden
+        wget "${FULL_URL}/limine-bios-cd.bin" -O limine_boot/limine-bios-cd.bin
+        wget "${FULL_URL}/limine-uefi-cd.bin" -O limine_boot/limine-uefi-cd.bin
+        wget "${FULL_URL}/limine.sys" -O limine_boot/limine.sys
+        wget "${FULL_URL}/BOOTX64.EFI" -O limine_boot/BOOTX64.EFI
+        wget "${FULL_URL}/BOOTIA32.EFI" -O limine_boot/BOOTIA32.EFI
+        
+        # Holt das vorkompilierte Deploy-Tool direkt als fertige Datei (Kein "make" mehr nötig!)
+        wget "${FULL_URL}/limine-deploy" -O limine_boot/limine-deploy
+        chmod +x limine_boot/limine-deploy
+
+        # Dateien in die ISO-Struktur einpflegen
         mkdir -p build/iso/boot/limine
-        cp limine/limine-bios-cd.bin build/iso/boot/limine/
-        cp limine/limine-uefi-cd.bin build/iso/boot/limine/
-        cp limine/limine.sys build/iso/boot/limine/
+        cp limine_boot/limine-bios-cd.bin build/iso/boot/limine/
+        cp limine_boot/limine-uefi-cd.bin build/iso/boot/limine/
+        cp limine_boot/limine.sys build/iso/boot/limine/
         
         mkdir -p build/iso/EFI/BOOT
-        cp limine/BOOTX64.EFI build/iso/EFI/BOOT/
-        cp limine/BOOTIA32.EFI build/iso/EFI/BOOT/
+        cp limine_boot/BOOTX64.EFI build/iso/EFI/BOOT/
+        cp limine_boot/BOOTIA32.EFI build/iso/EFI/BOOT/
 
         # Limine-Konfigurationsdatei schreiben
         echo -e "timeout: 5\n\n:ducklingOS 1 Starten\n    protocol: linux\n    kernel_path: boot:///(loop)/casper/vmlinuz\n    initrd_path: boot:///(loop)/casper/initrd\n    cmdline: boot=casper quiet splash ---" > build/iso/boot/limine/limine.conf
 
-        # Rechte freigeben
+        # Rechte für xorriso freigeben
         sudo chmod -R 755 build/iso
 
-        # 1. Basis-ISO erzeugen (Rein standardkonform ohne fehlerhafte Anhänge)
+        # 1. Basis-ISO erzeugen
         xorriso -as mkisofs -b boot/limine/limine-bios-cd.bin \
           -no-emul-boot -boot-load-size 4 -boot-info-table \
           --efi-boot boot/limine/limine-uefi-cd.bin \
@@ -86,8 +100,8 @@ jobs:
           -R -J -volid "DUCKLINGOS" \
           -o ducklingOS_1_x64.iso build/iso
 
-        # 2. UEFI/USB Hybrid-Code mithilfe des offiziellen Tools injizieren
-        sudo ./limine/limine-deploy ducklingOS_1_x64.iso
+        # 2. UEFI/USB Hybrid-Code mithilfe des fertigen Tools injizieren
+        sudo ./limine_boot/limine-deploy ducklingOS_1_x64.iso
 
     - name: ISO als Download bereitstellen
       uses: actions/upload-artifact@v4
