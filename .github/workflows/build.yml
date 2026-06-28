@@ -1,6 +1,7 @@
 name: Build ducklingOS 1 x64 (Limine Bootloader)
 on: 
-  workflow_dispatch:
+  push:
+    branches: [ main ]
 
 jobs:
   build-os:
@@ -12,7 +13,7 @@ jobs:
     - name: Bau-Werkzeuge installieren
       run: |
         sudo apt-get update
-        sudo apt-get install -y squashfs-tools xorriso genisoimage isolinux syslinux-common rsync wget mtools
+        sudo apt-get install -y squashfs-tools xorriso genisoimage isolinux syslinux-common rsync wget mtools gcc make
 
     - name: Minimales RootFS via Docker erstellen
       run: |
@@ -58,30 +59,20 @@ jobs:
         sudo cp $(ls -v build/squashfs/rootfs/boot/vmlinuz-* | tail -n 1) build/iso/casper/vmlinuz
         sudo cp $(ls -v build/squashfs/rootfs/boot/initrd.img-* | tail -n 1) build/iso/casper/initrd
         
-        # Sichere Zusammensetzung der Download-URLs
-        mkdir -p limine_boot
-        PART1="https://github.com"
-        PART2="/limine-bootloader/limine/raw/v7.x-binary"
-        FULL_URL="${PART1}${PART2}"
+        # Wir klonen das offizielle Repository und bauen das Tool direkt aus dem Quellcode!
+        git clone https://github.com --branch=v7.x-binary --depth=1
         
-        # Alle modernen Kernkomponenten laden
-        wget "${FULL_URL}/limine-bios-cd.bin" -O limine_boot/limine-bios-cd.bin
-        wget "${FULL_URL}/limine-uefi-cd.bin" -O limine_boot/limine-uefi-cd.bin
-        wget "${FULL_URL}/BOOTX64.EFI" -O limine_boot/BOOTX64.EFI
-        wget "${FULL_URL}/BOOTIA32.EFI" -O limine_boot/BOOTIA32.EFI
-        
-        # Das aktuelle All-in-One-Werkzeug laden (Ersetzt das alte limine-deploy)
-        wget "${FULL_URL}/limine" -O limine_boot/limine
-        chmod +x limine_boot/limine
+        # Kompiliert das offizielle All-in-One-Werkzeug live auf dem Server (dauert < 5 Sekunden)
+        make -C limine
 
         # Dateien in die ISO-Struktur einpflegen
         mkdir -p build/iso/boot/limine
-        cp limine_boot/limine-bios-cd.bin build/iso/boot/limine/
-        cp limine_boot/limine-uefi-cd.bin build/iso/boot/limine/
+        cp limine/limine-bios-cd.bin build/iso/boot/limine/
+        cp limine/limine-uefi-cd.bin build/iso/boot/limine/
         
         mkdir -p build/iso/EFI/BOOT
-        cp limine_boot/BOOTX64.EFI build/iso/EFI/BOOT/
-        cp limine_boot/BOOTIA32.EFI build/iso/EFI/BOOT/
+        cp limine/BOOTX64.EFI build/iso/EFI/BOOT/
+        cp limine/BOOTIA32.EFI build/iso/EFI/BOOT/
 
         # Limine-Konfigurationsdatei schreiben
         echo -e "timeout: 5\n\n:ducklingOS 1 Starten\n    protocol: linux\n    kernel_path: boot:///(loop)/casper/vmlinuz\n    initrd_path: boot:///(loop)/casper/initrd\n    cmdline: boot=casper quiet splash ---" > build/iso/boot/limine/limine.conf
@@ -97,8 +88,8 @@ jobs:
           -R -J -volid "DUCKLINGOS" \
           -o ducklingOS_1_x64.iso build/iso
 
-        # 2. UEFI/USB Hybrid-Code mithilfe des neuen Tools injizieren
-        sudo ./limine_boot/limine bios-install ducklingOS_1_x64.iso
+        # 2. UEFI/USB Hybrid-Code mithilfe des frisch gebauten Tools injizieren
+        sudo ./limine/limine bios-install ducklingOS_1_x64.iso
 
     - name: ISO als Download bereitstellen
       uses: actions/upload-artifact@v4
