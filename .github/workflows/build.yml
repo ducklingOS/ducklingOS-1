@@ -68,6 +68,7 @@ jobs:
         # Dateien in die ISO-Struktur einpflegen
         mkdir -p build/iso/boot/limine
         cp limine/limine-bios-cd.bin build/iso/boot/limine/
+        cp limine/limine-bios.sys build/iso/boot/limine/
         cp limine/limine-uefi-cd.bin build/iso/boot/limine/
         
         mkdir -p build/iso/EFI/BOOT
@@ -75,24 +76,8 @@ jobs:
         cp limine/BOOTIA32.EFI build/iso/EFI/BOOT/
 
         # Limine-Konfigurationsdatei schreiben
-        echo -e "timeout: 5\n\n:ducklingOS 1 Starten\n    protocol: linux\n    kernel_path: boot:///(loop)/casper/vmlinuz\n    initrd_path: boot:///(loop)/casper/initrd\n    cmdline: boot=casper quiet splash ---" > build/iso/boot/limine/limine.conf
+        echo -e "timeout: 5\n\n:ducklingOS 1 Starten\n    protocol: linux\n    kernel_path: boot:///casper/vmlinuz\n    initrd_path: boot:///casper/initrd\n    cmdline: boot=casper quiet splash ---" > build/iso/boot/limine/limine.conf
 
         # Rechte für xorriso freigeben
-        sudo chmod -R 755 build/iso
+        sudo chmod -R 755 build/
 
-        # 1. Basis-ISO erzeugen
-        xorriso -as mkisofs -b boot/limine/limine-bios-cd.bin \
-          -no-emul-boot -boot-load-size 4 -boot-info-table \
-          --efi-boot boot/limine/limine-uefi-cd.bin \
-          -no-emul-boot \
-          -R -J -volid "DUCKLINGOS" \
-          -o ducklingOS_1_x64.iso build/iso
-
-        # 2. UEFI/USB Hybrid-Code mithilfe des frisch gebauten Tools injizieren
-        sudo ./limine/limine bios-install ducklingOS_1_x64.iso
-
-    - name: ISO als Download bereitstellen
-      uses: actions/upload-artifact@v4
-      with:
-        name: ducklingOS-1-ISO
-        path: ducklingOS_1_x64.iso
