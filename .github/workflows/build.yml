@@ -81,3 +81,8 @@ jobs:
         # Rechte für xorriso freigeben
         sudo chmod -R 755 build/
 
+    - name: ISO als Download bereitstellen
+      uses: actions/upload-artifact@v4
+      with:
+        name: ducklingOS-1-ISO
+        path: ducklingOS_1_x64.iso
