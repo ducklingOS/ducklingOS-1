@@ -77,6 +77,10 @@ jobs:
 
         # Limine-Konfigurationsdatei schreiben
         echo -e "timeout: 5\n\n:ducklingOS 1 Starten\n    protocol: linux\n    kernel_path: boot:///casper/vmlinuz\n    initrd_path: boot:///casper/initrd\n    cmdline: boot=casper quiet splash ---" > build/iso/boot/limine/limine.conf
+        # Kopie für UEFI-Boot unter EFI/BOOT/
+        cp build/iso/boot/limine/limine.conf build/iso/EFI/BOOT/limine.conf
+        # Kopie im Root für maximale Kompatibilität
+        cp build/iso/boot/limine/limine.conf build/iso/limine.conf
 
         # Rechte für xorriso freigeben
         sudo chmod -R 755 build/
