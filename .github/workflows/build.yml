@@ -81,6 +81,17 @@ jobs:
         # Rechte für xorriso freigeben
         sudo chmod -R 755 build/
 
+    - name: ISO erstellen mit xorriso
+      run: |
+        sudo xorriso -as mkisofs \
+          -J -r -V "ducklingOS 1" \
+          -eltorito-boot boot/limine/limine-bios-cd.bin \
+          -no-emul-boot -boot-load-size 4 -boot-info-table \
+          -eltorito-alt-boot -eltorito-boot boot/limine/limine-uefi-cd.bin \
+          -no-emul-boot \
+          -o ducklingOS_1_x64.iso \
+          build/iso
+
     - name: ISO als Download bereitstellen
       uses: actions/upload-artifact@v4
       with:
